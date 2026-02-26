@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Generate framed images and GIFs of Normies NFTs with customizable frames, colors, and Banksy-style shred animation.">
+  <meta name="theme-color" content="#1a1b1c">
+  <meta property="og:title" content="NORMSKI Generator">
+  <meta property="og:description" content="Framed Image & GIF Generator for Normies NFTs">
+  <meta property="og:type" content="website">
+  <title>NORMSKI Generator</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <h1>NORMSKI</h1>
+    <p class="subtitle">Framed Image & GIF Generator</p>
+  </header>
+
+  <main>
+    <div class="preview-area">
+      <canvas id="preview" width="600" height="600"></canvas>
+      <div class="preview-controls">
+        <button id="playPause" class="btn-icon" title="Play / Pause">&#9654;</button>
+        <input type="range" id="timeline" min="0" max="1000" value="0" step="1">
+        <span id="timeDisplay">0%</span>
+      </div>
+      <div class="download-row">
+        <button id="exportPng" class="btn-download">Download PNG</button>
+        <button id="exportGif" class="btn-download btn-download-accent">Download GIF</button>
+      </div>
+      <div id="exportProgress" class="progress-container" style="display:none">
+        <div class="progress-bar">
+          <div class="progress-fill" id="progressFill"></div>
+        </div>
+        <span id="progressText">0%</span>
+      </div>
+    </div>
+
+    <div class="controls-panel">
+      <!-- Image Source -->
+      <section class="control-section">
+        <h3 class="section-title" data-toggle="source">Image Source</h3>
+        <div class="section-body" id="source">
+          <label>Token ID (0–9999)</label>
+          <div class="input-row">
+            <input type="number" id="normieId" min="0" max="9999" value="1" class="input-number">
+            <button id="loadNormie" class="btn-sm">Load</button>
+            <button id="randomNormie" class="btn-sm" title="Random">?</button>
+          </div>
+          <div id="normieTraits" class="traits-display"></div>
+        </div>
+      </section>
+
+      <!-- Presets -->
+      <section class="control-section">
+        <h3 class="section-title" data-toggle="presets">Presets</h3>
+        <div class="section-body" id="presets">
+          <div class="preset-grid">
+            <button class="preset-btn active" data-preset="gallery">Gallery</button>
+            <button class="preset-btn" data-preset="classicGold">Classic Gold</button>
+            <button class="preset-btn" data-preset="darkEbony">Dark Ebony</button>
+            <button class="preset-btn" data-preset="vintage">Vintage</button>
+            <button class="preset-btn" data-preset="modern">Modern</button>
+            <button class="preset-btn" data-preset="neon">Neon</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- Frame Settings -->
+      <section class="control-section">
+        <h3 class="section-title" data-toggle="frame">Frame Settings</h3>
+        <div class="section-body" id="frame">
+          <label>Style</label>
+          <select id="frameStyle">
+            <option value="ornate">Ornate</option>
+            <option value="simple">Simple</option>
+            <option value="pixel">Pixel</option>
+            <option value="modern">Modern</option>
+          </select>
+          <label>Border Width <span class="val" id="frameWidthVal">12%</span></label>
+          <input type="range" id="frameWidth" min="3" max="25" value="12" step="1">
+          <label>Mat Width <span class="val" id="matWidthVal">0%</span></label>
+          <input type="range" id="matWidth" min="0" max="20" value="0" step="1">
+          <label>Frame Size <span class="val" id="frameSizeVal">68%</span></label>
+          <input type="range" id="frameSize" min="50" max="95" value="68" step="1">
+          <label>Nesting Levels <span class="val" id="nestingVal">6</span></label>
+          <input type="range" id="nesting" min="1" max="12" value="6" step="1">
+          <div class="checkbox-row">
+            <input type="checkbox" id="showShelf" checked>
+            <label for="showShelf">Show shelf</label>
+          </div>
+          <div class="checkbox-row">
+            <input type="checkbox" id="showShadow" checked>
+            <label for="showShadow">Frame shadow</label>
+          </div>
+          <div class="checkbox-row">
+            <input type="checkbox" id="wallTexture">
+            <label for="wallTexture">Wall texture</label>
+          </div>
+        </div>
+      </section>
+
+      <!-- Colors -->
+      <section class="control-section">
+        <h3 class="section-title" data-toggle="colors">Colors</h3>
+        <div class="section-body" id="colors">
+          <div class="color-row">
+            <label>Wall</label>
+            <input type="color" id="wallColor" value="#808080">
+          </div>
+          <div class="color-row">
+            <label>Frame</label>
+            <input type="color" id="frameColor" value="#8B4513">
+          </div>
+          <div class="color-row">
+            <label>Frame Accent</label>
+            <input type="color" id="frameAccent" value="#CD853F">
+          </div>
+          <div class="color-row">
+            <label>Mat</label>
+            <input type="color" id="matColor" value="#FFFAF0">
+          </div>
+          <div class="color-row">
+            <label>Image Background</label>
+            <input type="color" id="imageBg" value="#FFFFFF">
+          </div>
+        </div>
+      </section>
+
+      <!-- Animation -->
+      <section class="control-section">
+        <h3 class="section-title" data-toggle="animation">Animation</h3>
+        <div class="section-body" id="animation">
+          <label>Type</label>
+          <select id="animationType">
+            <option value="shred" selected>Shred (Banksy)</option>
+            <option value="zoom-in">Zoom In (Tunnel)</option>
+            <option value="zoom-out">Zoom Out</option>
+            <option value="pulse">Pulse</option>
+            <option value="rotate">Rotate</option>
+            <option value="none">None</option>
+          </select>
+          <label>Speed <span class="val" id="animSpeedVal">5</span></label>
+          <input type="range" id="animSpeed" min="1" max="10" value="5" step="1">
+          <label>Easing</label>
+          <select id="easing">
+            <option value="linear">Linear</option>
+            <option value="ease-in-out">Ease In/Out</option>
+            <option value="ease-in">Ease In</option>
+            <option value="ease-out">Ease Out</option>
+          </select>
+        </div>
+      </section>
+
+      <!-- Export -->
+      <section class="control-section">
+        <h3 class="section-title" data-toggle="export">Export Settings</h3>
+        <div class="section-body" id="export">
+          <label>Resolution</label>
+          <select id="resolution">
+            <option value="400">400 x 400</option>
+            <option value="600" selected>600 x 600</option>
+            <option value="800">800 x 800</option>
+            <option value="1000">1000 x 1000</option>
+          </select>
+          <label>GIF Frames <span class="val" id="gifFramesVal">30</span></label>
+          <input type="range" id="gifFrames" min="10" max="60" value="30" step="1">
+          <label>FPS <span class="val" id="gifFpsVal">15</span></label>
+          <input type="range" id="gifFps" min="5" max="30" value="15" step="1">
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <footer>
+    <span>NORMSKI Generator</span>
+    <span class="sep">&middot;</span>
+    <span>by @OsayKancuno</span>
+  </footer>
+
+  <script src="gif.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
