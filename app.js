@@ -51,7 +51,6 @@ const state = {
   frameWidth: 12,
   matWidth: 0,
   frameSize: 68,
-  nesting: 6,
   showShelf: true,
   showShadow: true,
   wallTexture: false,
@@ -60,9 +59,7 @@ const state = {
   frameAccent: '#CD853F',
   matColor: '#FFFAF0',
   imageBg: '#FFFFFF',
-  animationType: 'shred',
   animSpeed: 5,
-  easing: 'linear',
   resolution: 600,
   gifFrames: 30,
   gifFps: 15,
@@ -126,8 +123,6 @@ function setupUI() {
     frameWidth: { display: 'frameWidthVal', suffix: '%' },
     matWidth:   { display: 'matWidthVal',   suffix: '%' },
     frameSize:  { display: 'frameSizeVal',  suffix: '%' },
-    nesting:    { display: 'nestingVal',    suffix: '' },
-    animSpeed:  { display: 'animSpeedVal',  suffix: '' },
     gifFrames:  { display: 'gifFramesVal',  suffix: '' },
     gifFps:     { display: 'gifFpsVal',     suffix: '' }
   };
@@ -142,7 +137,7 @@ function setupUI() {
   });
 
   // Selects
-  ['frameStyle', 'animationType', 'easing', 'resolution'].forEach(id => {
+  ['frameStyle', 'resolution'].forEach(id => {
     document.getElementById(id).addEventListener('change', e => {
       state[id] = id === 'resolution' ? parseInt(e.target.value, 10) : e.target.value;
       requestRender();
@@ -404,16 +399,6 @@ function applyPreset(name) {
   requestRender();
 }
 
-// ===== EASING =====
-function applyEasing(t) {
-  switch (state.easing) {
-    case 'ease-in': return t * t;
-    case 'ease-out': return t * (2 - t);
-    case 'ease-in-out': return t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
-    default: return t;
-  }
-}
-
 // ===== RENDERING =====
 let renderRequested = false;
 
@@ -428,49 +413,7 @@ function requestRender() {
 }
 
 function renderScene(ctx, W, H, rawProgress, opts) {
-  const t = applyEasing(rawProgress);
-
-  // Shred animation uses a completely different rendering path
-  if (opts.animationType === 'shred') {
-    renderShredScene(ctx, W, H, t, opts);
-    return;
-  }
-
-  const frameFrac = opts.frameSize / 100;
-  const borderFrac = opts.frameWidth / 100;
-  const matFrac = opts.matWidth / 100;
-  const innerFrac = Math.max(0.05, 1 - 2 * borderFrac - 2 * matFrac);
-  const nestRatio = Math.max(0.05, frameFrac * innerFrac);
-
-  let zoom = 1;
-  let rotation = 0;
-  switch (opts.animationType) {
-    case 'zoom-in':  zoom = Math.pow(1 / nestRatio, t); break;
-    case 'zoom-out': zoom = Math.pow(nestRatio, t); break;
-    case 'pulse':    zoom = 1 + Math.sin(t * Math.PI * 2) * 0.25; break;
-    case 'rotate':   rotation = t * Math.PI * 2; break;
-  }
-
-  ctx.clearRect(0, 0, W, H);
-  ctx.fillStyle = getWallFill(ctx);
-  ctx.fillRect(0, 0, W, H);
-
-  ctx.save();
-  if (rotation !== 0) {
-    ctx.translate(W / 2, H / 2);
-    ctx.rotate(rotation);
-    ctx.translate(-W / 2, -H / 2);
-  }
-
-  const maxLevels = opts.nesting + 4;
-  for (let i = -2; i < maxLevels; i++) {
-    const levelScale = zoom * Math.pow(nestRatio, i);
-    if (levelScale > 8) continue;
-    if (levelScale < 0.003) break;
-    drawLevel(ctx, W, H, levelScale, frameFrac, borderFrac, matFrac, innerFrac, opts);
-  }
-
-  ctx.restore();
+  renderShredScene(ctx, W, H, rawProgress, opts);
 }
 
 // ===== SHRED (BANKSY) ANIMATION =====
@@ -621,113 +564,6 @@ function renderShredScene(ctx, W, H, t, opts) {
     const shelfX = cx - shelfW / 2;
     const shelfY = frameBottom + frameW * 0.01;
     const shelfH = actualShelfH;
-
-    ctx.fillStyle = adjustColor(opts.frameColor, 10);
-    ctx.fillRect(shelfX, shelfY, shelfW, shelfH);
-
-    ctx.fillStyle = adjustColor(opts.frameColor, -15);
-    ctx.fillRect(shelfX, shelfY + shelfH, shelfW, shelfH * 0.6);
-
-    ctx.fillStyle = 'rgba(0,0,0,0.15)';
-    ctx.fillRect(shelfX, shelfY + shelfH + shelfH * 0.6, shelfW, shelfH * 0.4);
-
-    const bracketW = Math.max(2, shelfW * 0.025);
-    const bracketH = Math.max(3, shelfH * 3);
-    ctx.fillStyle = adjustColor(opts.frameColor, -25);
-    ctx.fillRect(shelfX + shelfW * 0.15, shelfY + shelfH, bracketW, bracketH);
-    ctx.fillRect(shelfX + shelfW * 0.85 - bracketW, shelfY + shelfH, bracketW, bracketH);
-  }
-}
-
-function drawLevel(ctx, W, H, scale, frameFrac, borderFrac, matFrac, innerFrac, opts) {
-  const cx = W / 2;
-  const cy = H / 2;
-  const frameW = W * frameFrac * scale;
-  const frameH = H * frameFrac * scale;
-
-  if (frameW < 2 || frameH < 2) return;
-
-  const fx = cx - frameW / 2;
-  const fy = cy - frameH / 2;
-
-  // Wall background behind this frame
-  const wallSize = frameW / frameFrac;
-  ctx.fillStyle = getWallFill(ctx);
-  ctx.fillRect(cx - wallSize / 2, cy - wallSize / 2, wallSize, wallSize);
-
-  // Frame shadow
-  if (opts.showShadow && frameW > 15) {
-    const blur = Math.max(3, frameW * 0.03);
-    const offX = Math.max(1, frameW * 0.008);
-    const offY = Math.max(2, frameW * 0.015);
-    ctx.save();
-    ctx.shadowColor = 'rgba(0,0,0,0.45)';
-    ctx.shadowBlur = blur;
-    ctx.shadowOffsetX = offX;
-    ctx.shadowOffsetY = offY;
-    ctx.fillStyle = opts.frameColor;
-    ctx.fillRect(fx, fy, frameW, frameH);
-    ctx.restore();
-  }
-
-  // Frame border
-  const bw = frameW * borderFrac;
-  drawFrameBorder(ctx, fx, fy, frameW, frameH, bw, opts);
-
-  // Mat
-  const mw = frameW * matFrac;
-  const matX = fx + bw;
-  const matY = fy + bw;
-  const matW = frameW - bw * 2;
-  const matH = frameH - bw * 2;
-
-  if (matW > 0 && matH > 0) {
-    ctx.fillStyle = opts.matColor;
-    ctx.fillRect(matX, matY, matW, matH);
-
-    if (mw > 1 && matW > 10) {
-      ctx.strokeStyle = adjustColor(opts.matColor, -30);
-      ctx.lineWidth = Math.max(0.5, mw * 0.1);
-      ctx.strokeRect(matX + mw - 1, matY + mw - 1, matW - (mw - 1) * 2, matH - (mw - 1) * 2);
-    }
-  }
-
-  // Image area
-  const imgX = matX + mw;
-  const imgY = matY + mw;
-  const imgW = matW - mw * 2;
-  const imgH = matH - mw * 2;
-
-  if (imgW > 2 && imgH > 2) {
-    ctx.fillStyle = opts.imageBg;
-    ctx.fillRect(imgX, imgY, imgW, imgH);
-
-    if (opts.image) {
-      const iw = opts.image.naturalWidth || opts.image.width;
-      const ih = opts.image.naturalHeight || opts.image.height;
-      const imgAspect = iw / ih;
-      const areaAspect = imgW / imgH;
-
-      let dw, dh, dx, dy;
-      if (imgAspect > areaAspect) {
-        dw = imgW; dh = imgW / imgAspect;
-        dx = imgX; dy = imgY + (imgH - dh) / 2;
-      } else {
-        dh = imgH; dw = imgH * imgAspect;
-        dx = imgX + (imgW - dw) / 2; dy = imgY;
-      }
-
-      ctx.imageSmoothingEnabled = false;
-      ctx.drawImage(opts.image, dx, dy, dw, dh);
-    }
-  }
-
-  // Shelf
-  if (opts.showShelf && frameW > 60) {
-    const shelfW = frameW * 0.65;
-    const shelfH = Math.max(2, frameW * 0.018);
-    const shelfX = cx - shelfW / 2;
-    const shelfY = fy + frameH + frameW * 0.01;
 
     ctx.fillStyle = adjustColor(opts.frameColor, 10);
     ctx.fillRect(shelfX, shelfY, shelfW, shelfH);

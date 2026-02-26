@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:api.normies.art)",
+      "Bash(npx:*)",
+      "mcp__Claude_Preview__preview_start",
+      "Bash(where npx:*)",
+      "WebFetch(domain:www.normies.art)",
+      "Bash(curl:*)",
+      "Bash(git --version)"
+    ]
+  }
+}
