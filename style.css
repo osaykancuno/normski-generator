@@ -473,6 +473,42 @@ footer {
   margin: 0 8px;
 }
 
+/* Mode tabs */
+.mode-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--border);
+}
+
+.mode-tab {
+  flex: 1;
+  padding: 10px 12px;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--text-tertiary);
+  font-family: inherit;
+  font-size: 11px;
+  cursor: pointer;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.mode-tab:hover {
+  color: var(--text-primary);
+  background: var(--surface);
+}
+
+.mode-tab.active {
+  color: var(--text-primary);
+  border-bottom-color: var(--fg);
+}
+
+/* Utility */
+.hidden {
+  display: none !important;
+}
+
 /* Responsive */
 @media (max-width: 800px) {
   main {

@@ -38,6 +38,12 @@
     </div>
 
     <div class="controls-panel">
+      <!-- Mode Tabs -->
+      <div class="mode-tabs">
+        <button class="mode-tab active" data-mode="frame">Frame</button>
+        <button class="mode-tab" data-mode="streetart">Street Art</button>
+      </div>
+
       <!-- Image Source -->
       <section class="control-section">
         <h3 class="section-title" data-toggle="source">Image Source</h3>
@@ -53,7 +59,7 @@
       </section>
 
       <!-- Presets -->
-      <section class="control-section">
+      <section class="control-section" id="presetsSection">
         <h3 class="section-title" data-toggle="presets">Presets</h3>
         <div class="section-body" id="presets">
           <div class="preset-grid">
@@ -68,7 +74,7 @@
       </section>
 
       <!-- Frame Settings -->
-      <section class="control-section">
+      <section class="control-section" id="frameSection">
         <h3 class="section-title" data-toggle="frame">Frame Settings</h3>
         <div class="section-body" id="frame">
           <label>Style</label>
@@ -99,8 +105,31 @@
         </div>
       </section>
 
+      <!-- Street Art Settings (hidden by default) -->
+      <section class="control-section hidden" id="streetartSection">
+        <h3 class="section-title" data-toggle="streetartSettings">Street Art Settings</h3>
+        <div class="section-body" id="streetartSettings">
+          <label>Wall Type</label>
+          <select id="wallType">
+            <option value="concrete">Concrete</option>
+            <option value="brick">Brick</option>
+            <option value="plaster">Plaster</option>
+          </select>
+          <div class="color-row">
+            <label>Wall Color</label>
+            <input type="color" id="streetWallColor" value="#808080">
+          </div>
+          <div class="color-row">
+            <label>Paint Color</label>
+            <input type="color" id="stencilColor" value="#000000">
+          </div>
+          <label>Image Size <span class="val" id="stencilSizeVal">70%</span></label>
+          <input type="range" id="stencilSize" min="30" max="95" value="70" step="1">
+        </div>
+      </section>
+
       <!-- Colors -->
-      <section class="control-section">
+      <section class="control-section" id="colorsSection">
         <h3 class="section-title" data-toggle="colors">Colors</h3>
         <div class="section-body" id="colors">
           <div class="color-row">

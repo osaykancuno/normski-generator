@@ -54,6 +54,11 @@ const state = {
   showShelf: true,
   showShadow: true,
   wallTexture: false,
+  mode: 'frame',
+  wallType: 'concrete',
+  stencilColor: '#000000',
+  streetWallColor: '#808080',
+  stencilSize: 70,
   wallColor: '#808080',
   frameColor: '#8B4513',
   frameAccent: '#CD853F',
@@ -70,7 +75,9 @@ const state = {
 };
 
 let canvas, ctx;
-let wallTextureCanvas = null; // cached texture tile (context-independent)
+let wallTextureCanvas = null;   // cached texture tile (context-independent)
+let stencilCache = null;        // cached stencil canvas { key, canvas }
+let wallTypeTileCache = null;   // cached street art wall tile { type, color, canvas }
 
 // ===== INITIALIZATION =====
 document.addEventListener('DOMContentLoaded', () => {
@@ -163,6 +170,45 @@ function setupUI() {
     });
   });
 
+  // Mode tabs
+  document.querySelectorAll('.mode-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      document.querySelectorAll('.mode-tab').forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+      state.mode = tab.dataset.mode;
+      if (state.playing) stopAnimation();
+      applyModeUI();
+      requestRender();
+    });
+  });
+
+  // Street Art controls
+  document.getElementById('wallType').addEventListener('change', e => {
+    state.wallType = e.target.value;
+    wallTypeTileCache = null;
+    requestRender();
+  });
+
+  document.getElementById('streetWallColor').addEventListener('input', e => {
+    state.streetWallColor = e.target.value;
+    wallTypeTileCache = null;
+    requestRender();
+  });
+
+  document.getElementById('stencilColor').addEventListener('input', e => {
+    state.stencilColor = e.target.value;
+    stencilCache = null;
+    requestRender();
+  });
+
+  const stencilSizeEl = document.getElementById('stencilSize');
+  stencilSizeEl.addEventListener('input', () => {
+    state.stencilSize = parseFloat(stencilSizeEl.value);
+    document.getElementById('stencilSizeVal').textContent = stencilSizeEl.value + '%';
+    stencilCache = null;
+    requestRender();
+  });
+
   // Timeline scrubber
   document.getElementById('timeline').addEventListener('input', e => {
     state.progress = parseFloat(e.target.value) / 1000;
@@ -176,6 +222,20 @@ function setupUI() {
   // Export
   document.getElementById('exportPng').addEventListener('click', exportPNG);
   document.getElementById('exportGif').addEventListener('click', exportGIF);
+}
+
+function applyModeUI() {
+  const isStreet = state.mode === 'streetart';
+  // Frame-only sections
+  document.getElementById('presetsSection').classList.toggle('hidden', isStreet);
+  document.getElementById('frameSection').classList.toggle('hidden', isStreet);
+  document.getElementById('colorsSection').classList.toggle('hidden', isStreet);
+  // Street art section
+  document.getElementById('streetartSection').classList.toggle('hidden', !isStreet);
+  // Preview controls (animation only for frame mode)
+  document.querySelector('.preview-controls').classList.toggle('hidden', isStreet);
+  // GIF button only for frame mode
+  document.getElementById('exportGif').classList.toggle('hidden', isStreet);
 }
 
 // ===== IMAGE LOADING =====
@@ -193,6 +253,7 @@ async function loadNormie(id) {
   const img = await fetchNormieImage(id);
   if (img) {
     state.image = img;
+    stencilCache = null;
     requestRender();
   }
 
@@ -386,6 +447,185 @@ function getWallFill(targetCtx) {
   return targetCtx.createPattern(wallTextureCanvas, 'repeat');
 }
 
+// ===== STENCIL / SPRAY PAINT EFFECT =====
+function getStencilCanvas(sourceImage, paintColor, targetW, targetH) {
+  const key = `${sourceImage.src}_${paintColor}_${targetW}_${targetH}`;
+  if (stencilCache && stencilCache.key === key) return stencilCache.canvas;
+
+  const c = document.createElement('canvas');
+  c.width = targetW;
+  c.height = targetH;
+  const sctx = c.getContext('2d');
+
+  // Draw source image scaled to target size
+  sctx.imageSmoothingEnabled = false;
+  sctx.drawImage(sourceImage, 0, 0, targetW, targetH);
+
+  const imageData = sctx.getImageData(0, 0, targetW, targetH);
+  const data = imageData.data;
+  const [pr, pg, pb] = hexToRgb(paintColor);
+
+  // Seeded PRNG for deterministic grain
+  let seed = pr * 65536 + pg * 256 + pb + targetW + 7;
+  const rand = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+
+  // Pass 1: threshold to 3-level stencil with spray grain
+  for (let i = 0; i < data.length; i += 4) {
+    const lum = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+    if (lum < 80) {
+      // Dark regions: full paint with grain
+      data[i] = pr; data[i + 1] = pg; data[i + 2] = pb;
+      data[i + 3] = 255 - Math.floor(rand() * 40);
+    } else if (lum < 170) {
+      // Mid-tone regions: semi-transparent paint
+      data[i] = pr; data[i + 1] = pg; data[i + 2] = pb;
+      data[i + 3] = 90 - Math.floor(rand() * 50);
+    } else {
+      // Light regions: cut out (transparent)
+      data[i + 3] = 0;
+    }
+  }
+
+  // Pass 2: edge overspray — sparse dots near paint/transparent boundaries
+  const w = targetW, h = targetH;
+  const alphaSnapshot = new Uint8Array(w * h);
+  for (let i = 0; i < alphaSnapshot.length; i++) alphaSnapshot[i] = data[i * 4 + 3];
+
+  for (let y = 2; y < h - 2; y++) {
+    for (let x = 2; x < w - 2; x++) {
+      const idx = y * w + x;
+      if (alphaSnapshot[idx] > 0) continue; // only add spray in transparent areas
+      // Check if any neighbor within 2px is painted
+      let nearPaint = false;
+      for (let dy = -2; dy <= 2 && !nearPaint; dy++) {
+        for (let dx = -2; dx <= 2 && !nearPaint; dx++) {
+          if (alphaSnapshot[(y + dy) * w + (x + dx)] > 50) nearPaint = true;
+        }
+      }
+      if (nearPaint && rand() < 0.12) {
+        const pi = idx * 4;
+        data[pi] = pr; data[pi + 1] = pg; data[pi + 2] = pb;
+        data[pi + 3] = 30 + Math.floor(rand() * 60);
+      }
+    }
+  }
+
+  sctx.putImageData(imageData, 0, 0);
+  stencilCache = { key, canvas: c };
+  return c;
+}
+
+// ===== STREET ART WALL TEXTURES =====
+function buildWallTypeTile(type, color) {
+  const key = `${type}_${color}`;
+  if (wallTypeTileCache && wallTypeTileCache.key === key) return wallTypeTileCache.canvas;
+
+  const [r, g, b] = hexToRgb(color);
+  let seed = r * 65536 + g * 256 + b + 13;
+  const rand = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+
+  const tile = document.createElement('canvas');
+  const tctx = tile.getContext('2d');
+
+  if (type === 'brick') {
+    tile.width = 160; tile.height = 80;
+    const mortarColor = adjustColor(color, -25);
+    tctx.fillStyle = mortarColor;
+    tctx.fillRect(0, 0, 160, 80);
+
+    const brickW = 36, brickH = 16, gap = 3;
+    const rowH = brickH + gap;
+    const rows = Math.ceil(80 / rowH) + 1;
+
+    for (let row = 0; row < rows; row++) {
+      const offsetX = (row % 2 === 0) ? 0 : -(brickW + gap) / 2;
+      const y = row * rowH;
+      const cols = Math.ceil(160 / (brickW + gap)) + 2;
+      for (let col = 0; col < cols; col++) {
+        const x = offsetX + col * (brickW + gap);
+        const n = (rand() - 0.5) * 20;
+        tctx.fillStyle = `rgb(${clamp(r + n)},${clamp(g + n)},${clamp(b + n)})`;
+        tctx.fillRect(x, y, brickW, brickH);
+        // Subtle highlight on top edge
+        tctx.fillStyle = `rgba(255,255,255,${0.04 + rand() * 0.04})`;
+        tctx.fillRect(x, y, brickW, 2);
+      }
+    }
+  } else if (type === 'plaster') {
+    tile.width = 150; tile.height = 150;
+    tctx.fillStyle = color;
+    tctx.fillRect(0, 0, 150, 150);
+    // Large splotchy noise
+    for (let y = 0; y < 150; y += 3) {
+      for (let x = 0; x < 150; x += 3) {
+        const n = (rand() - 0.5) * 14;
+        const n2 = (rand() - 0.5) * 8;
+        tctx.fillStyle = `rgb(${clamp(r + n + n2)},${clamp(g + n)},${clamp(b + n - n2 * 0.5)})`;
+        tctx.fillRect(x, y, 3, 3);
+      }
+    }
+    // Occasional cracks/marks
+    tctx.strokeStyle = `rgba(0,0,0,0.08)`;
+    tctx.lineWidth = 0.5;
+    for (let i = 0; i < 4; i++) {
+      const sx = rand() * 150, sy = rand() * 150;
+      tctx.beginPath();
+      tctx.moveTo(sx, sy);
+      tctx.lineTo(sx + (rand() - 0.5) * 30, sy + (rand() - 0.5) * 30);
+      tctx.stroke();
+    }
+  } else {
+    // concrete (default)
+    tile.width = 120; tile.height = 120;
+    tctx.fillStyle = color;
+    tctx.fillRect(0, 0, 120, 120);
+    for (let y = 0; y < 120; y += 2) {
+      for (let x = 0; x < 120; x += 2) {
+        const n = (rand() - 0.5) * 22;
+        tctx.fillStyle = `rgb(${clamp(r + n)},${clamp(g + n)},${clamp(b + n)})`;
+        tctx.fillRect(x, y, 2, 2);
+      }
+    }
+  }
+
+  wallTypeTileCache = { key, canvas: tile };
+  return tile;
+}
+
+// ===== STREET ART RENDERING =====
+function renderStreetArt(ctx, W, H, opts) {
+  const wallColor = opts.streetWallColor;
+
+  // 1) Wall background with type texture
+  ctx.clearRect(0, 0, W, H);
+  const wallTile = buildWallTypeTile(opts.wallType, wallColor);
+  ctx.fillStyle = ctx.createPattern(wallTile, 'repeat');
+  ctx.fillRect(0, 0, W, H);
+
+  // 2) Draw stencil image centered on wall
+  if (opts.image) {
+    const sizeFrac = opts.stencilSize / 100;
+    const maxDim = Math.min(W, H) * sizeFrac;
+    const iw = opts.image.naturalWidth || opts.image.width;
+    const ih = opts.image.naturalHeight || opts.image.height;
+    const imgAspect = iw / ih;
+
+    let dw, dh;
+    if (imgAspect > 1) {
+      dw = maxDim; dh = maxDim / imgAspect;
+    } else {
+      dh = maxDim; dw = maxDim * imgAspect;
+    }
+
+    const stencil = getStencilCanvas(opts.image, opts.stencilColor, Math.round(dw), Math.round(dh));
+    const drawX = (W - dw) / 2;
+    const drawY = (H - dh) / 2;
+
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(stencil, drawX, drawY, dw, dh);
+  }
+}
+
 // ===== PRESETS =====
 function applyPreset(name) {
   const p = PRESETS[name];
@@ -413,7 +653,8 @@ function requestRender() {
 }
 
 function renderScene(ctx, W, H, rawProgress, opts) {
-  renderShredScene(ctx, W, H, rawProgress, opts);
+  if (opts.mode === 'streetart') renderStreetArt(ctx, W, H, opts);
+  else renderShredScene(ctx, W, H, rawProgress, opts);
 }
 
 // ===== SHRED (BANKSY) ANIMATION =====
