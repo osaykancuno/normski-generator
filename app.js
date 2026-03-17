@@ -595,35 +595,145 @@ function buildWallTypeTile(type, color) {
 // ===== STREET ART RENDERING =====
 function renderStreetArt(ctx, W, H, opts) {
   const wallColor = opts.streetWallColor;
+  const [wr, wg, wb] = hexToRgb(wallColor);
 
-  // 1) Wall background with type texture
+  // Seeded PRNG for consistent city skyline
+  let seed = wr * 256 + wg * 16 + wb + 42;
+  const rand = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+
+  // Layout zones
+  const skyBottom = H * 0.28;
+  const wallTop = H * 0.22;
+  const wallBottom = H * 0.86;
+  const sidewalkTop = wallBottom;
+
   ctx.clearRect(0, 0, W, H);
+
+  // 1) Sky gradient
+  const skyGrad = ctx.createLinearGradient(0, 0, 0, skyBottom);
+  skyGrad.addColorStop(0, '#1a1e2e');
+  skyGrad.addColorStop(0.6, '#2a3248');
+  skyGrad.addColorStop(1, '#3d4560');
+  ctx.fillStyle = skyGrad;
+  ctx.fillRect(0, 0, W, skyBottom + 2);
+
+  // 2) City skyline silhouettes
+  const numBuildings = 7 + Math.floor(rand() * 3);
+  const buildingW = W / numBuildings;
+  for (let i = 0; i < numBuildings; i++) {
+    const bh = H * (0.08 + rand() * 0.16);
+    const bx = i * buildingW + (rand() - 0.5) * buildingW * 0.2;
+    const bw = buildingW * (0.7 + rand() * 0.4);
+    const by = skyBottom - bh;
+    const darkness = 15 + Math.floor(rand() * 15);
+    ctx.fillStyle = `rgb(${darkness},${darkness + 2},${darkness + 5})`;
+    ctx.fillRect(bx, by, bw, bh + 2);
+
+    // Windows (small lit squares)
+    const winSize = Math.max(2, W * 0.005);
+    const winGap = winSize * 2.5;
+    for (let wy = by + winGap; wy < skyBottom - winGap; wy += winGap) {
+      for (let wx = bx + winGap; wx < bx + bw - winGap; wx += winGap) {
+        if (rand() > 0.45) {
+          const bright = 0.3 + rand() * 0.7;
+          ctx.fillStyle = `rgba(255,220,120,${bright * 0.6})`;
+          ctx.fillRect(wx, wy, winSize, winSize);
+        }
+      }
+    }
+  }
+
+  // 3) Wall with perspective (trapezoid clip + texture)
+  const perspShift = W * 0.015;
+  ctx.save();
+  ctx.beginPath();
+  ctx.moveTo(perspShift, wallTop);            // top-left (shifted right)
+  ctx.lineTo(W - perspShift * 0.3, wallTop);  // top-right
+  ctx.lineTo(W, wallBottom);                   // bottom-right
+  ctx.lineTo(0, wallBottom);                   // bottom-left
+  ctx.closePath();
+  ctx.clip();
+
   const wallTile = buildWallTypeTile(opts.wallType, wallColor);
   ctx.fillStyle = ctx.createPattern(wallTile, 'repeat');
-  ctx.fillRect(0, 0, W, H);
+  ctx.fillRect(0, wallTop, W, wallBottom - wallTop);
 
-  // 2) Draw stencil image centered on wall
+  // Wall edge shadow (top)
+  const edgeShadow = ctx.createLinearGradient(0, wallTop, 0, wallTop + H * 0.03);
+  edgeShadow.addColorStop(0, 'rgba(0,0,0,0.25)');
+  edgeShadow.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = edgeShadow;
+  ctx.fillRect(0, wallTop, W, H * 0.03);
+
+  // 4) Stencil on wall
   if (opts.image) {
+    const wallH = wallBottom - wallTop;
+    const wallW = W;
     const sizeFrac = opts.stencilSize / 100;
-    const maxDim = Math.min(W, H) * sizeFrac;
+    const maxDim = Math.min(wallW * 0.85, wallH * 0.85) * sizeFrac;
     const iw = opts.image.naturalWidth || opts.image.width;
     const ih = opts.image.naturalHeight || opts.image.height;
     const imgAspect = iw / ih;
 
     let dw, dh;
-    if (imgAspect > 1) {
-      dw = maxDim; dh = maxDim / imgAspect;
-    } else {
-      dh = maxDim; dw = maxDim * imgAspect;
-    }
+    if (imgAspect > 1) { dw = maxDim; dh = maxDim / imgAspect; }
+    else { dh = maxDim; dw = maxDim * imgAspect; }
 
     const stencil = getStencilCanvas(opts.image, opts.stencilColor, Math.round(dw), Math.round(dh));
-    const drawX = (W - dw) / 2;
-    const drawY = (H - dh) / 2;
+    const drawX = (wallW - dw) / 2;
+    const drawY = wallTop + (wallH - dh) / 2;
 
     ctx.imageSmoothingEnabled = false;
     ctx.drawImage(stencil, drawX, drawY, dw, dh);
   }
+
+  ctx.restore(); // end wall clip
+
+  // 5) Sidewalk
+  const sidewalkH = H - sidewalkTop;
+  const swGrad = ctx.createLinearGradient(0, sidewalkTop, 0, H);
+  swGrad.addColorStop(0, '#3a3a3a');
+  swGrad.addColorStop(0.15, '#4a4a4a');
+  swGrad.addColorStop(1, '#2a2a2a');
+  ctx.fillStyle = swGrad;
+  ctx.fillRect(0, sidewalkTop, W, sidewalkH);
+
+  // Curb line
+  ctx.fillStyle = '#555';
+  ctx.fillRect(0, sidewalkTop, W, Math.max(2, H * 0.005));
+
+  // Sidewalk cracks
+  ctx.strokeStyle = 'rgba(0,0,0,0.15)';
+  ctx.lineWidth = 1;
+  seed = wr + wg + wb + 99; // re-seed for cracks
+  for (let i = 0; i < 3; i++) {
+    const cx = rand() * W;
+    ctx.beginPath();
+    ctx.moveTo(cx, sidewalkTop + sidewalkH * 0.2);
+    ctx.lineTo(cx + (rand() - 0.5) * 20, H);
+    ctx.stroke();
+  }
+
+  // 6) Lamppost (left side)
+  const lampX = W * 0.08;
+  const lampTop = H * 0.05;
+  const poleW = Math.max(2, W * 0.006);
+  ctx.fillStyle = '#222';
+  ctx.fillRect(lampX - poleW / 2, lampTop, poleW, H - lampTop);
+
+  // Lamp head
+  const headW = W * 0.04;
+  const headH = H * 0.018;
+  ctx.fillStyle = '#1a1a1a';
+  ctx.fillRect(lampX - headW / 2, lampTop, headW, headH);
+
+  // Lamp glow
+  const glowR = W * 0.06;
+  const glowGrad = ctx.createRadialGradient(lampX, lampTop + headH, 0, lampX, lampTop + headH, glowR);
+  glowGrad.addColorStop(0, 'rgba(255,220,120,0.15)');
+  glowGrad.addColorStop(1, 'rgba(255,220,120,0)');
+  ctx.fillStyle = glowGrad;
+  ctx.fillRect(lampX - glowR, lampTop + headH - glowR, glowR * 2, glowR * 2);
 }
 
 // ===== PRESETS =====

@@ -4,8 +4,9 @@
     {
       "name": "normski",
       "runtimeExecutable": "node",
-      "runtimeArgs": ["C:/Program Files/nodejs/node_modules/npm/bin/npx-cli.js", "serve", ".", "-l", "3000", "--no-clipboard"],
-      "port": 3000
+      "runtimeArgs": ["C:/Program Files/nodejs/node_modules/npm/bin/npx-cli.js", "serve", ".", "--no-clipboard"],
+      "port": 3000,
+      "autoPort": true
     }
   ]
 }
